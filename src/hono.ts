@@ -9,9 +9,15 @@ export function ripleyGuardHono(options: RipleyGuardOptions) {
     const rawData = `${clientIp}:${c.req.url}:${timeWindow}:${options.serverSecret}`;
 
     const encoder = new TextEncoder();
+
+    // Calculate current nonce
     const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(rawData));
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const expectedNonce = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
+    const expectedNonce = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
+
+    // Calculate previous nonce for rolling window grace period
+    const prevRawData = `${clientIp}:${c.req.url}:${timeWindow - 1}:${options.serverSecret}`;
+    const prevHashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(prevRawData));
+    const prevNonce = Array.from(new Uint8Array(prevHashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
 
     if (!authHeader || !authHeader.startsWith('XMR402')) {
       c.header('WWW-Authenticate', `XMR402 address="${options.walletAddress}", amount="${options.amountPiconero}", message="${expectedNonce}"`);
@@ -21,8 +27,20 @@ export function ripleyGuardHono(options: RipleyGuardOptions) {
     const matches = authHeader.match(AUTH_REGEX);
     if (!matches || matches.length !== 3) return c.json({ error: 'INVALID_XMR402_FORMAT' }, 400);
 
-    const isValid = await verifyProofOnChain(options, matches[1], matches[2], expectedNonce);
-    if (!isValid) return c.json({ error: 'INVALID_PROOF_OR_FUNDS_MISSING' }, 403);
+    // Check both current and previous nonces
+    const isCurrentValid = await verifyProofOnChain(options, matches[1], matches[2], expectedNonce);
+    let isPrevValid = false;
+
+    if (!isCurrentValid) {
+      isPrevValid = await verifyProofOnChain(options, matches[1], matches[2], prevNonce);
+    }
+
+    const isValid = isCurrentValid || isPrevValid;
+
+    if (!isValid) {
+      console.log("[GUARD_FAIL] IP:", clientIp, "Expected Nonce:", expectedNonce, "Prev Nonce:", prevNonce, "TXID:", matches[1]);
+      return c.json({ error: 'INVALID_PROOF_OR_FUNDS_MISSING' }, 403);
+    }
 
     await next();
   };
