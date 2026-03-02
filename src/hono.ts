@@ -4,8 +4,8 @@ import { RipleyGuardOptions, AUTH_REGEX, verifyProofOnChain, PaymentConfig } fro
 export function ripleyGuardHono(options: RipleyGuardOptions) {
   return async (c: Context, next: Next) => {
     const authHeader = c.req.header('Authorization');
-    const timeWindow = Math.floor(Date.now() / (options.expireWindowMs || 60000));
-    const clientIp = c.req.header('x-forwarded-for') || 'unknown-ip';
+    const timeWindow = Math.floor(Date.now() / (options.expireWindowMs || 300000));
+    const clientIp = c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || 'unknown-ip';
     const rawData = `${clientIp}:${c.req.url}:${timeWindow}:${options.serverSecret}`;
 
     const encoder = new TextEncoder();

@@ -55,7 +55,7 @@ export function ripleyGuard(options: RipleyGuardOptions) {
 
     // 动态生成 Edge 原生 Nonce
     const timeWindow = Math.floor(Date.now() / expireWindowMs)
-    const clientIp = c.req.header('x-forwarded-for') || 'unknown-ip'
+    const clientIp = c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || 'unknown-ip'
     const rawData = `${clientIp}:${c.req.url}:${timeWindow}:${serverSecret}`
 
     const encoder = new TextEncoder()
