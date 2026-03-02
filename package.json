@@ -6,6 +6,17 @@
   "publisher": "KYC.rip",
   "version": "1.0.0",
   "description": "Stateless XMR402 protocol middleware for Hono and Express. Tactical Monero payment gating.",
+  "keywords": [
+    "monero",
+    "xmr",
+    "xmr402",
+    "http-402",
+    "ai-agents",
+    "m2m-payments",
+    "crypto-gateway",
+    "hono",
+    "express"
+  ],
   "type": "module",
   "exports": {
     "./express": {

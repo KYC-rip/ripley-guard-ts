@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { RipleyGuardOptions, AUTH_REGEX, verifyProofOnChain } from './core';
+import { RipleyGuardOptions, AUTH_REGEX, verifyProofOnChain, PaymentConfig } from './core';
 import crypto from 'crypto';
 
 const generateExpectedNonce = (req: Request, options: RipleyGuardOptions): string => {
@@ -41,5 +41,47 @@ export function ripleyGuardExpress(options: RipleyGuardOptions) {
 
     // 4. Breakthrough: Release request
     next();
+  };
+}
+
+/**
+ * The best DX Wrapper for RipleyGuard (Express One-Liner version)
+ * Automatically absorbs environment variables, locks down routes with one line of code.
+ */
+export function paymentMiddleware(config: PaymentConfig) {
+  // 1. Automatically absorbs environment variables
+  const nodeRpcUrl = process.env.XMR_RPC_URL || 'http://127.0.0.1:18081/json_rpc';
+  const walletAddress = process.env.XMR_WALLET_ADDRESS || '';
+  const serverSecret = process.env.XMR_SERVER_SECRET || 'default_dev_secret';
+
+  if (!walletAddress) {
+    console.warn('[RipleyGuard] WARNING: XMR_WALLET_ADDRESS is missing in your .env file.');
+  }
+
+  return async (req: Request, res: Response, next: NextFunction) => {
+    // 2. Precise sniper route.
+    // Note: If dynamic route parameters (e.g. /api/users/:id), here we get the actual path (e.g. /api/users/123)
+    // When configuring rules, pay attention to the matching rules
+    const routeKey = `${req.method} ${req.path}`;
+    const rule = config[routeKey];
+
+    // 3. If not in the protected list, or not receiving XMR, directly pass
+    if (!rule || !rule.accepts?.includes('XMR')) {
+      return next();
+    }
+
+    // 4. Unit conversion
+    const amountPiconero = Math.floor(rule.amount * 1e12);
+
+    // 5. Pull the gun, summon the underlying hard-core guard
+    const guard = ripleyGuardExpress({
+      nodeRpcUrl,
+      walletAddress,
+      amountPiconero,
+      serverSecret
+    });
+
+    // 6. Delegate the request to the guard
+    return guard(req, res, next);
   };
 }

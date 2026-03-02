@@ -1,5 +1,5 @@
 import { Context, Next } from 'hono';
-import { RipleyGuardOptions, AUTH_REGEX, verifyProofOnChain } from './core';
+import { RipleyGuardOptions, AUTH_REGEX, verifyProofOnChain, PaymentConfig } from './core';
 
 export function ripleyGuardHono(options: RipleyGuardOptions) {
   return async (c: Context, next: Next) => {
@@ -25,5 +25,45 @@ export function ripleyGuardHono(options: RipleyGuardOptions) {
     if (!isValid) return c.json({ error: 'INVALID_PROOF_OR_FUNDS_MISSING' }, 403);
 
     await next();
+  };
+}
+
+/**
+ * The best DX Wrapper for RipleyGuard (One-Liner version)
+ * Environment variables: XMR_RPC_URL, XMR_WALLET_ADDRESS, XMR_SERVER_SECRET
+ */
+export function paymentMiddleware(config: PaymentConfig) {
+  // 1. Read environment variables (fallback for safety)
+  const nodeRpcUrl = process.env.XMR_RPC_URL || 'http://127.0.0.1:18081/json_rpc';
+  const walletAddress = process.env.XMR_WALLET_ADDRESS || '';
+  const serverSecret = process.env.XMR_SERVER_SECRET || 'default_dev_secret';
+
+  if (!walletAddress) {
+    console.warn('[RipleyGuard] Warning: XMR_WALLET_ADDRESS is missing in env.');
+  }
+
+  return async (c: Context, next: Next) => {
+    // 2.Concatenate the current request's route signature, e.g. "GET /api"
+    // Note: If you need exact matching, you may need to use c.req.routePath to get the registered route
+    const routeKey = `${c.req.method} ${c.req.path}`;
+    const rule = config[routeKey];
+
+    // 3. If no rule is hit, or XMR is not supported, directly pass
+    if (!rule || !rule.accepts?.includes('XMR')) {
+      return await next();
+    }
+
+    // 4. Convert to piconero and summon the underlying engine
+    const amountPiconero = Math.floor(rule.amount * 1e12);
+
+    // Reuse our hard-core guard
+    const guard = ripleyGuardHono({
+      nodeRpcUrl,
+      walletAddress,
+      amountPiconero,
+      serverSecret
+    });
+
+    return await guard(c, next);
   };
 }

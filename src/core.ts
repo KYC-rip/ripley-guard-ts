@@ -6,6 +6,13 @@ export interface RipleyGuardOptions {
   expireWindowMs?: number;
 }
 
+export interface PaymentRule {
+  accepts: string[];
+  amount: number; // Normal XMR amount
+}
+
+export type PaymentConfig = Record<string, PaymentRule>;
+
 export const AUTH_REGEX = /^XMR402\s+txid="([^"]+)",\s*proof="([^"]+)"$/;
 
 export const verifyProofOnChain = async (options: RipleyGuardOptions, txid: string, proof: string, message: string): Promise<boolean> => {
