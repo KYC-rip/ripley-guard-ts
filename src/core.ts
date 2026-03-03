@@ -17,7 +17,12 @@ export const AUTH_REGEX = /^XMR402\s+txid="([^"]+)",\s*proof="([^"]+)"$/;
 
 export const verifyProofOnChain = async (options: RipleyGuardOptions, txid: string, proof: string, message: string): Promise<boolean> => {
   try {
-    const response = await fetch(options.nodeRpcUrl, {
+    let rpcUrl = options.nodeRpcUrl;
+    if (!rpcUrl.endsWith('/json_rpc')) {
+      rpcUrl = rpcUrl.replace(/\/$/, '') + '/json_rpc';
+    }
+
+    const response = await fetch(rpcUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
