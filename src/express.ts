@@ -2,20 +2,26 @@ import { Request, Response, NextFunction } from 'express';
 import { RipleyGuardOptions, AUTH_REGEX, verifyProofOnChain, PaymentConfig } from './core';
 import crypto from 'crypto';
 
-const generateExpectedNonce = (req: Request, options: RipleyGuardOptions): string => {
-  const timeWindow = Math.floor(Date.now() / (options.expireWindowMs || 60000));
-  const data = `${req.ip}:${req.originalUrl}:${timeWindow}:${options.serverSecret}`;
-  return crypto.createHmac('sha256', options.serverSecret).update(data).digest('hex').substring(0, 16);
+const generateExpectedNonce = (req: Request, options: RipleyGuardOptions, timestamp: number): string => {
+  const timeWindow = Math.floor(timestamp / (options.expireWindowMs || 300000));
+
+  // Instruction Binding: Hash the request body
+  const bodyText = (req.method === 'GET' || req.method === 'HEAD') ? '' : JSON.stringify(req.body);
+  const bodyHash = crypto.createHash('sha256').update(bodyText).digest('hex');
+
+  const data = `${req.ip}:${req.originalUrl}:${bodyHash}:${timeWindow}:${options.serverSecret}`;
+  return crypto.createHash('sha256').update(data).digest('hex').substring(0, 16);
 };
 
 export function ripleyGuardExpress(options: RipleyGuardOptions) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const authHeader = req.headers['authorization'];
-    const expectedNonce = generateExpectedNonce(req, options);
+    const timestamp = Date.now();
+    const expectedNonce = generateExpectedNonce(req, options, timestamp);
 
     // 1. Challenge: No credentials, return 402
     if (!authHeader || !authHeader.startsWith('XMR402')) {
-      const challenge = `XMR402 address="${options.walletAddress}", amount="${options.amountPiconero}", message="${expectedNonce}"`;
+      const challenge = `XMR402 address="${options.walletAddress}", amount="${options.amountPiconero}", message="${expectedNonce}", timestamp="${timestamp}"`;
       res.setHeader('WWW-Authenticate', challenge);
       res.status(402).json({ error: 'TACTICAL_PAYMENT_REQUIRED', protocol: 'XMR402' });
       return;

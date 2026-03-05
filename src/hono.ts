@@ -4,23 +4,29 @@ import { RipleyGuardOptions, AUTH_REGEX, verifyProofOnChain, PaymentConfig } fro
 export function ripleyGuardHono(options: RipleyGuardOptions) {
   return async (c: Context, next: Next) => {
     const authHeader = c.req.header('Authorization');
-    const timeWindow = Math.floor(Date.now() / (options.expireWindowMs || 300000));
+    const timestamp = Date.now();
+    const timeWindow = Math.floor(timestamp / (options.expireWindowMs || 300000));
     const clientIp = c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || 'unknown-ip';
-    const rawData = `${clientIp}:${c.req.url}:${timeWindow}:${options.serverSecret}`;
 
+    // Instruction Binding: Hash the request body to prevent instruction replacement attacks
+    const bodyText = (c.req.method === 'GET' || c.req.method === 'HEAD') ? '' : await c.req.raw.clone().text();
     const encoder = new TextEncoder();
+    const bodyHashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(bodyText));
+    const bodyHash = Array.from(new Uint8Array(bodyHashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+    const rawData = `${clientIp}:${c.req.url}:${bodyHash}:${timeWindow}:${options.serverSecret}`;
 
     // Calculate current nonce
     const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(rawData));
     const expectedNonce = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
 
     // Calculate previous nonce for rolling window grace period
-    const prevRawData = `${clientIp}:${c.req.url}:${timeWindow - 1}:${options.serverSecret}`;
+    const prevRawData = `${clientIp}:${c.req.url}:${bodyHash}:${timeWindow - 1}:${options.serverSecret}`;
     const prevHashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(prevRawData));
     const prevNonce = Array.from(new Uint8Array(prevHashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
 
     if (!authHeader || !authHeader.startsWith('XMR402')) {
-      c.header('WWW-Authenticate', `XMR402 address="${options.walletAddress}", amount="${options.amountPiconero}", message="${expectedNonce}"`);
+      c.header('WWW-Authenticate', `XMR402 address="${options.walletAddress}", amount="${options.amountPiconero}", message="${expectedNonce}", timestamp="${timestamp}"`);
       return c.json({ error: 'TACTICAL_PAYMENT_REQUIRED', protocol: 'XMR402' }, 402);
     }
 

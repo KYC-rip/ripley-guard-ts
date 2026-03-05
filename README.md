@@ -8,9 +8,9 @@ Drop the bloated payment processors. `ripley-guard-ts` is a hyper-lightweight, s
 
 ## ⚡ Features
 
-* **Stateless Architecture**: Zero databases. Cryptographic nonce generation prevents replay attacks entirely in memory.
-* **IETF Compliant**: Native HTTP 402 flow using standard `WWW-Authenticate` and `Authorization` headers.
-* **0-Conf Verification**: Instant resource unlocking using Monero's `check_tx_proof`. Millisecond access.
+* **Instruction Binding**: Prevents instruction replacement attacks by binding nonces to request payloads (`bodyHash`).
+* **IETF Compliant**: Native HTTP 402 flow using `WWW-Authenticate` (with `timestamp`) and `Authorization` headers.
+* **0-Conf Verification**: Instant resource unlocking using Monero's `check_tx_proof`.
 * **Agent Native**: Speaks the exact machine-readable protocol autonomous AI entities expect.
 * **Universal Exports**: Dual exported for both Edge (Hono) and Node.js (Express).
 
@@ -113,7 +113,7 @@ ripleyGuardHono({
 `ripley-guard-ts` strictly adheres to the XMR402 specification:
 
 1. Intercepts unauthorized requests with `HTTP 402 Payment Required`.
-2. Issues a `WWW-Authenticate: XMR402 ...` challenge containing the target address, amount, and a cryptographic nonce.
+2. Issues a `WWW-Authenticate: XMR402 ...` challenge containing the target address, amount, a payload-bound cryptographic nonce, and a server timestamp.
 3. Verifies incoming `Authorization: XMR402 txid="...", proof="..."` credentials directly against the Monero blockchain mempool.
 
 For the full machine-to-machine protocol specification, visit [XMR402.org](https://xmr402.org).
