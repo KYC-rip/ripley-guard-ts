@@ -1,123 +1,81 @@
 # 🛡️ Ripley Guard (TypeScript)
 
-> Industrial-grade Monero payment gating for modern APIs. IETF-compliant, 0-conf enabled, and built for the sovereign internet.
+> **XMR402 v2.0**: The first transport-agnostic Monero payment primitive.
 
-Drop the bloated payment processors. `ripley-guard-ts` is a hyper-lightweight, stateless middleware for Hono, Express, and Edge runtimes (Cloudflare Workers/Bun). It implements the **XMR402 Protocol**, locking your API resources behind cryptographic Monero proofs.
+Industrial-grade Monero payment gating for modern agents, relays, and APIs. Stateless, anonymous, and built for the sovereign machine economy.
 
-**Keywords:** `monero`, `xmr`, `xmr402`, `http-402`, `ai-agents`, `m2m-payments`, `crypto-gateway`, `hono`, `express`
+`ripley-guard-ts` is a hyper-lightweight middleware implementation of the **XMR402 Protocol**. Refactored in v2.0 into a decoupled architecture, it now supports payment gating across **HTTP**, **WebSockets**, and **Nostr**.
 
-## ⚡ Features
+## ⚡ v2.0 Breakthroughs
 
-* **Instruction Binding**: Prevents instruction replacement attacks by binding nonces to request payloads (`bodyHash`).
-* **IETF Compliant**: Native HTTP 402 flow using `WWW-Authenticate` (with `timestamp`) and `Authorization` headers.
-* **0-Conf Verification**: Instant resource unlocking using Monero's `check_tx_proof`.
-* **Agent Native**: Speaks the exact machine-readable protocol autonomous AI entities expect.
-* **Universal Exports**: Dual exported for both Edge (Hono) and Node.js (Express).
+* **Transport Agnostic**: One core, multiple gates. HTTP, WebSocket (Relay), or Nostr (NIP-style).
+* **Payload Binding (HMAC)**: Cryptographically binds payment challenges to specific request intents (URL, Body, IP) to prevent instruction replacement.
+* **Stateless Purity**: Zero database required. Validates 0-conf Monero proofs against any RPC node.
+* **Rolling Window**: Native support for rolling time-window nonces to handle network latency in agentic handshakes.
 
 ## 📦 Installation
 
 ```bash
 npm install @kyc-rip/ripley-guard-ts
-
 ```
 
-## 🔥 Extreme DX (The One-Liner)
+## 🛠️ Decoupled Modules
 
-Want absolute simplicity? Use the high-order wrapper. Load your secrets into `.env` (`XMR_RPC_URL`, `XMR_WALLET_ADDRESS`, `XMR_SERVER_SECRET`) and lock down specific routes in one line.
-
-```typescript
-import { Hono } from 'hono'
-import { paymentMiddleware } from '@kyc-rip/ripley-guard-ts/hono'
-
-const app = new Hono()
-
-// Map routes to XMR prices. Boom. Done.
-app.use('*', paymentMiddleware({
-  "GET /api/classified": { accepts: ["XMR"], amount: 0.05 },
-  "POST /api/generate": { accepts: ["XMR"], amount: 0.1 }
-}))
-
-app.get('/api/classified', (c) => c.json({ data: "Sovereign Content Unlocked" }))
-
-```
-
-*(Works exactly the same for Express via `@kyc-rip/ripley-guard-ts/express`)*
-
-## 🚀 Core API Usage
-
-Need more control? Drop down to the core middleware.
-
-### For Hono (Edge / Bun / Cloudflare)
+### 1. HTTP (Hono / Express)
+The classic 402 flow for REST APIs. Supports Cloudflare Workers, Node.js, Bun, and Deno.
 
 ```typescript
-import { Hono } from 'hono'
 import { ripleyGuardHono } from '@kyc-rip/ripley-guard-ts/hono'
 
-const app = new Hono()
-
-// Mount the tactical gateway
-const xmr402Gate = ripleyGuardHono({
-  nodeRpcUrl: "[http://127.0.0.1:18081/json_rpc](http://127.0.0.1:18081/json_rpc)",
-  walletAddress: "888tNkbaB65ad3hgE9R916PP56bdz1c9v...", 
-  amountPiconero: 5000000000, // 0.005 XMR
-  serverSecret: process.env.GUARD_SECRET // Used for stateless nonce generation
-})
-
-// Protect your sovereign resources
-app.get('/api/classified', xmr402Gate, (c) => {
-  return c.json({ data: "Sovereign Content Unlocked" })
-})
-
+// Mount as middleware
+app.use('/intel', ripleyGuardHono({
+  nodeRpcUrl: "https://rpc.kyc.rip",
+  walletAddress: "888tNkba...",
+  amountPiconero: 1000000, // 0.001 XMR
+  serverSecret: "tactical_secret"
+}))
 ```
 
-### For Express (Node.js)
+### 2. WebSocket Relay (P2P JSON Frames)
+Direct agent-to-agent payment gating using JSON frames.
 
 ```typescript
-import express from 'express'
-import { ripleyGuardExpress } from '@kyc-rip/ripley-guard-ts/express'
+import { ripleyGuardWS } from '@kyc-rip/ripley-guard-ts/ws/adapter'
 
-const app = express()
+const gate = ripleyGuardWS(options)
 
-const xmr402Gate = ripleyGuardExpress({
-  nodeRpcUrl: "[http://127.0.0.1:18081/json_rpc](http://127.0.0.1:18081/json_rpc)",
-  walletAddress: "888tNkbaB65ad3hgE9R916PP56bdz1c9v...",
-  amountPiconero: 5000000000,
-  serverSecret: process.env.GUARD_SECRET
+ws.on('message', async (msg) => {
+  await gate.handle(ws, msg.toString(), 'client-7', 5000, (intent) => {
+    ws.send(`Access granted for ${intent}. Unlocking sovereign stream...`)
+  })
 })
-
-app.get('/api/classified', xmr402Gate, (req, res) => {
-  res.json({ data: "Sovereign Content Unlocked" })
-})
-
 ```
 
-## ⚙️ Advanced Configuration
-
-Need dynamic addresses for high-value clients? Pass a function to `walletAddress` to handle routing on the fly:
+### 3. Nostr Adapter
+Default implementation for gated Nostr relays or pay-per-event access.
 
 ```typescript
-ripleyGuardHono({
-  nodeRpcUrl: "[https://rpc.kyc.rip/json_rpc](https://rpc.kyc.rip/json_rpc)",
-  amountPiconero: 1000000000000, // 1 XMR
-  serverSecret: "super_secret_salt",
-  // Fetch a unique subaddress per request
-  walletAddress: async (reqInfo) => {
-    return await myDatabase.getSubaddressForClient(reqInfo.ip)
-  }
-})
+import { NostrXMR402Gate } from '@kyc-rip/ripley-guard-ts/nostr'
 
+const gate = new NostrXMR402Gate({ ...options })
+
+// Issues standardized ["NOTICE", "PAYMENT_REQUIRED: XMR402 ..."]
+const [tag, msg] = await gate.createNostrChallenge(pubkey, "EVENT_PUBLISH", 1000)
+relay.send(tag, msg)
 ```
 
-## 🌐 The Protocol
+## 🌐 The v2.0 Protocol
 
-`ripley-guard-ts` strictly adheres to the XMR402 specification:
+`ripley-guard-ts` strictly adheres to the XMR402 v2.0 specification:
 
-1. Intercepts unauthorized requests with `HTTP 402 Payment Required`.
-2. Issues a `WWW-Authenticate: XMR402 ...` challenge containing the target address, amount, a payload-bound cryptographic nonce, and a server timestamp.
-3. Verifies incoming `Authorization: XMR402 txid="...", proof="..."` credentials directly against the Monero blockchain mempool.
+1. **CHALLENGE**: Server issues a transport-specific challenge (HTTP 402 / JSON Frame) containing `address`, `amount`, `message` (nonce), and `timestamp`.
+2. **PROOF**: Client initiates a Monero TX and provides a cryptographic proof (TX Proof) via the `Authorization` header or PROOF frame.
+3. **VERIFY**: Server validates the proof against the blockchain mempool (0-conf) and the bound intent.
 
-For the full machine-to-machine protocol specification, visit [XMR402.org](https://xmr402.org).
+For the full specification, visit [XMR402.org](https://xmr402.org).
+
+For full integration details, see our [Examples Directory](./src/examples).
 
 ## License
 
-MIT © [KYC.rip](https://kyc.rip)
+MIT © [XBToshi](https://x.com/xbtoshi) / [KYC.rip](https://kyc.rip)

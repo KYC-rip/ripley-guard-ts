@@ -4,8 +4,8 @@
     "url": "https://github.com/KYC-rip/ripley-guard-ts.git"
   },
   "publisher": "KYC.rip",
-  "version": "1.0.5",
-  "description": "Stateless XMR402 protocol middleware for Hono and Express. Tactical Monero payment gating.",
+  "version": "2.0.0",
+  "description": "Stateless XMR402 Protocol v2.0. Transport-Agnostic Monero Payment Gating (HTTP/WS/Nostr).",
   "keywords": [
     "monero",
     "xmr",
@@ -15,19 +15,44 @@
     "m2m-payments",
     "crypto-gateway",
     "hono",
-    "express"
+    "express",
+    "websocket",
+    "nostr",
+    "relay",
+    "x402",
+    "middleware"
   ],
   "type": "module",
   "exports": {
     "./express": {
-      "import": "./dist/express.js",
-      "require": "./dist/express.cjs",
-      "types": "./dist/express.d.ts"
+      "import": "./dist/http/express.js",
+      "require": "./dist/http/express.cjs",
+      "types": "./dist/http/express.d.ts"
     },
     "./hono": {
-      "import": "./dist/hono.js",
-      "require": "./dist/hono.cjs",
-      "types": "./dist/hono.d.ts"
+      "import": "./dist/http/hono.js",
+      "require": "./dist/http/hono.cjs",
+      "types": "./dist/http/hono.d.ts"
+    },
+    "./ws": {
+      "import": "./dist/ws/relay.js",
+      "require": "./dist/ws/relay.cjs",
+      "types": "./dist/ws/relay.d.ts"
+    },
+    "./ws/adapter": {
+      "import": "./dist/ws/adapter.js",
+      "require": "./dist/ws/adapter.cjs",
+      "types": "./dist/ws/adapter.d.ts"
+    },
+    "./nostr": {
+      "import": "./dist/ws/nostr.js",
+      "require": "./dist/ws/nostr.cjs",
+      "types": "./dist/ws/nostr.d.ts"
+    },
+    "./core": {
+      "import": "./dist/core.js",
+      "require": "./dist/core.cjs",
+      "types": "./dist/core.d.ts"
     }
   },
   "scripts": {

@@ -1,50 +1,85 @@
 import { Context, Next } from 'hono';
-import { RipleyGuardOptions, AUTH_REGEX, verifyProofOnChain, PaymentConfig } from './core';
+import {
+  generateNonce,
+  verifyPayment,
+  hashPayload,
+  AUTH_REGEX,
+  NonceContext
+} from './core';
+
+export interface RipleyGuardOptions {
+  nodeRpcUrl: string;
+  walletAddress: string;
+  amountPiconero: number;
+  serverSecret: string;
+  expireWindowMs?: number;
+}
 
 export function ripleyGuardHono(options: RipleyGuardOptions) {
+  const {
+    nodeRpcUrl,
+    walletAddress,
+    amountPiconero,
+    serverSecret,
+    expireWindowMs = 300000
+  } = options;
+
   return async (c: Context, next: Next) => {
     const authHeader = c.req.header('Authorization');
     const timestamp = Date.now();
-    const timeWindow = Math.floor(timestamp / (options.expireWindowMs || 300000));
+    const timeWindow = Math.floor(timestamp / expireWindowMs);
     const clientIp = c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || 'unknown-ip';
 
-    // Instruction Binding: Hash the request body to prevent instruction replacement attacks
+    // 1. Instruction Binding: Hash the request body
     const bodyText = (c.req.method === 'GET' || c.req.method === 'HEAD') ? '' : await c.req.raw.clone().text();
-    const encoder = new TextEncoder();
-    const bodyHashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(bodyText));
-    const bodyHash = Array.from(new Uint8Array(bodyHashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+    const payloadHash = await hashPayload(bodyText);
 
-    const rawData = `${clientIp}:${c.req.url}:${bodyHash}:${timeWindow}:${options.serverSecret}`;
+    const nonceCtx: NonceContext = {
+      clientIp,
+      url: c.req.url,
+      payloadHash,
+      timestamp: timeWindow.toString()
+    };
 
-    // Calculate current nonce
-    const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(rawData));
-    const expectedNonce = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
+    // Calculate current and previous nonces for rolling window
+    const expectedNonce = await generateNonce(serverSecret, nonceCtx);
+    const prevNonce = await generateNonce(serverSecret, { ...nonceCtx, timestamp: (timeWindow - 1).toString() });
 
-    // Calculate previous nonce for rolling window grace period
-    const prevRawData = `${clientIp}:${c.req.url}:${bodyHash}:${timeWindow - 1}:${options.serverSecret}`;
-    const prevHashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(prevRawData));
-    const prevNonce = Array.from(new Uint8Array(prevHashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
-
+    // 2. Challenge: No credentials, return 402
     if (!authHeader || !authHeader.startsWith('XMR402')) {
-      c.header('WWW-Authenticate', `XMR402 address="${options.walletAddress}", amount="${options.amountPiconero}", message="${expectedNonce}", timestamp="${timestamp}"`);
+      const challenge = `XMR402 address="${walletAddress}", amount="${amountPiconero}", message="${expectedNonce}", timestamp="${timestamp}"`;
+      c.header('WWW-Authenticate', challenge);
       return c.json({ error: 'TACTICAL_PAYMENT_REQUIRED', protocol: 'XMR402' }, 402);
     }
 
+    // 3. Attempt to break through: Extract TxID and Proof
     const matches = authHeader.match(AUTH_REGEX);
-    if (!matches || matches.length !== 3) return c.json({ error: 'INVALID_XMR402_FORMAT' }, 400);
-
-    // Check both current and previous nonces
-    const isCurrentValid = await verifyProofOnChain(options, matches[1], matches[2], expectedNonce);
-    let isPrevValid = false;
-
-    if (!isCurrentValid) {
-      isPrevValid = await verifyProofOnChain(options, matches[1], matches[2], prevNonce);
+    if (!matches || matches.length !== 3) {
+      return c.json({ error: 'INVALID_XMR402_FORMAT' }, 400);
     }
 
-    const isValid = isCurrentValid || isPrevValid;
+    const txid = matches[1];
+    const proof = matches[2];
+
+    // 4. Verification with rolling window grace
+    const verify = (nonce: string) => verifyPayment(nodeRpcUrl, {
+      txid,
+      address: walletAddress,
+      message: nonce,
+      signature: proof,
+      minAmount: amountPiconero
+    });
+
+    const currentResult = await verify(expectedNonce);
+    let isValid = currentResult.success;
 
     if (!isValid) {
-      console.log("[GUARD_FAIL] IP:", clientIp, "Expected Nonce:", expectedNonce, "Prev Nonce:", prevNonce, "TXID:", matches[1]);
+      const prevResult = await verify(prevNonce);
+      isValid = prevResult.success;
+    }
+
+    if (!isValid) {
+      console.log(`[GUARD_FAIL] IP: ${clientIp} URL: ${c.req.url} TXID: ${txid}`);
       return c.json({ error: 'INVALID_PROOF_OR_FUNDS_MISSING' }, 403);
     }
 
@@ -52,35 +87,28 @@ export function ripleyGuardHono(options: RipleyGuardOptions) {
   };
 }
 
-/**
- * The best DX Wrapper for RipleyGuard (One-Liner version)
- * Environment variables: XMR_RPC_URL, XMR_WALLET_ADDRESS, XMR_SERVER_SECRET
- */
+export interface PaymentRule {
+  accepts: string[];
+  amount: number;
+}
+
+export type PaymentConfig = Record<string, PaymentRule>;
+
 export function paymentMiddleware(config: PaymentConfig) {
-  // 1. Read environment variables (fallback for safety)
   const nodeRpcUrl = process.env.XMR_RPC_URL || 'http://127.0.0.1:18081/json_rpc';
   const walletAddress = process.env.XMR_WALLET_ADDRESS || '';
   const serverSecret = process.env.XMR_SERVER_SECRET || 'default_dev_secret';
 
-  if (!walletAddress) {
-    console.warn('[RipleyGuard] Warning: XMR_WALLET_ADDRESS is missing in env.');
-  }
-
   return async (c: Context, next: Next) => {
-    // 2.Concatenate the current request's route signature, e.g. "GET /api"
-    // Note: If you need exact matching, you may need to use c.req.routePath to get the registered route
     const routeKey = `${c.req.method} ${c.req.path}`;
     const rule = config[routeKey];
 
-    // 3. If no rule is hit, or XMR is not supported, directly pass
     if (!rule || !rule.accepts?.includes('XMR')) {
       return await next();
     }
 
-    // 4. Convert to piconero and summon the underlying engine
     const amountPiconero = Math.floor(rule.amount * 1e12);
 
-    // Reuse our hard-core guard
     const guard = ripleyGuardHono({
       nodeRpcUrl,
       walletAddress,

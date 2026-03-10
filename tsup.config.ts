@@ -2,8 +2,13 @@ import { defineConfig } from 'tsup';
 
 export default defineConfig({
   entry: [
-    'src/express.ts',
-    'src/hono.ts'
+    'src/index.ts',
+    'src/core.ts',
+    'src/http/express.ts',
+    'src/http/hono.ts',
+    'src/ws/relay.ts',
+    'src/ws/adapter.ts',
+    'src/ws/nostr.ts'
   ],
   format: ['cjs', 'esm'],
   dts: true,
