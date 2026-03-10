@@ -3,6 +3,7 @@
   "repository": {
     "url": "https://github.com/KYC-rip/ripley-guard-ts.git"
   },
+  "homepage": "https://kyc.rip/guard",
   "publisher": "KYC.rip",
   "version": "2.0.0",
   "description": "Stateless XMR402 Protocol v2.0. Transport-Agnostic Monero Payment Gating (HTTP/WS/Nostr).",

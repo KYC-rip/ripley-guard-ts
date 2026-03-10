@@ -5,7 +5,7 @@ import {
   hashPayload,
   AUTH_REGEX,
   NonceContext
-} from './core';
+} from '../core';
 
 export interface RipleyGuardOptions {
   nodeRpcUrl: string;
