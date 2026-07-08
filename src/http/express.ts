@@ -13,6 +13,9 @@ export interface RipleyGuardOptions {
   amountPiconero: number;
   serverSecret: string;
   expireWindowMs?: number;
+  // Extra headers for the wallet-RPC call (e.g. a Cloudflare Access service token
+  // when the RPC is gated). Passed straight through to verifyPayment.
+  rpcHeaders?: Record<string, string>;
 }
 
 export function ripleyGuardExpress(options: RipleyGuardOptions) {
@@ -21,7 +24,8 @@ export function ripleyGuardExpress(options: RipleyGuardOptions) {
     walletAddress,
     amountPiconero,
     serverSecret,
-    expireWindowMs = 300000
+    expireWindowMs = 300000,
+    rpcHeaders
   } = options;
 
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -72,7 +76,7 @@ export function ripleyGuardExpress(options: RipleyGuardOptions) {
       message: nonce,
       signature: proof,
       minAmount: amountPiconero
-    });
+    }, rpcHeaders);
 
     const currentResult = await verify(expectedNonce);
     let isValid = currentResult.success;

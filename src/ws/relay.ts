@@ -8,6 +8,8 @@ export interface XMR402WSOptions {
   walletAddress: string;
   serverSecret: string;
   nodeRpcUrl: string;
+  // Extra headers for the wallet-RPC call (e.g. a Cloudflare Access service token).
+  rpcHeaders?: Record<string, string>;
 }
 
 export type XMR402Frame = 
@@ -64,6 +66,6 @@ export class XMR402Relay {
       message,
       signature: proof,
       minAmount
-    });
+    }, this.options.rpcHeaders);
   }
 }

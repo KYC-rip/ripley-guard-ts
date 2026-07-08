@@ -17,7 +17,14 @@ export interface NonceContext {
 export const AUTH_REGEX = /^XMR402\s+txid="([^"]+)",\s*proof="([^"]+)"$/;
 
 /**
- * Generates a stateless, intent-bound nonce (message) for XMR402 v2.0
+ * Generates a stateless, intent-bound nonce (message) for XMR402 v2.0.
+ *
+ * Binds the client IP + intent (url + request body) + a rolling time window + the server
+ * secret. The IP binding pins a captured (txid, proof) to one source IP for anti-replay.
+ * NOTE for Tor clients: the challenge and the proof-carrying retry must egress the same
+ * exit IP (they do within Tor's ~10 min MaxCircuitDirtiness window when both hit the same
+ * host through one embed) or the nonce won't re-derive. If an end-to-end Tor flow returns
+ * 403 despite a valid proof, this IP binding is the cause — drop clientIp here then.
  */
 export async function generateNonce(secret: string, ctx: NonceContext): Promise<string> {
   const { clientIp, url, payloadHash, timestamp } = ctx;
@@ -44,14 +51,18 @@ export async function verifyPayment(
     message: string;
     signature: string;
     minAmount: number;
-  }
+  },
+  // Extra headers for the RPC call — e.g. a Cloudflare Access service token
+  // (CF-Access-Client-Id / CF-Access-Client-Secret) or Basic auth when the
+  // Monero wallet-RPC sits behind an auth gate. Empty by default.
+  extraHeaders: Record<string, string> = {}
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const cleanRpcUrl = rpcUrl.endsWith('/json_rpc') ? rpcUrl : rpcUrl.replace(/\/$/, '') + '/json_rpc';
 
     const response = await fetch(cleanRpcUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...extraHeaders },
       body: JSON.stringify({
         jsonrpc: '2.0',
         id: 'xmr402-core',
